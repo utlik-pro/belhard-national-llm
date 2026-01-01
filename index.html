@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Belhard AI | Корпоративная LLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              belhard: {
+                blue: '#005EB8',
+                dark: '#003087',
+                light: '#E6F0FA',
+                bg: '#F8F9FA',
+                text: '#1A1A1A',
+                green: '#00A86B',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-out forwards',
+              'slide-up': 'slideUp 0.4s ease-out forwards',
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'blink': 'blink 1s step-end infinite',
+              'slide-down-fade': 'slideDownFade 0.3s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              slideDownFade: {
+                '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              blink: {
+                '0%, 100%': { opacity: '1' },
+                '50%': { opacity: '0' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #F8F9FA;
+        overflow: hidden; /* Prevent body scroll, handle in app */
+      }
+      /* Custom Scrollbar for sleek look */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+
+      /* Markdown Styles - Clean Enterprise Look */
+      .markdown-body {
+        line-height: 1.6;
+        font-size: 0.95rem;
+      }
+      .markdown-body p {
+        margin-bottom: 0.75em;
+      }
+      .markdown-body strong {
+        font-weight: 700;
+        color: inherit;
+      }
+      .markdown-body em {
+        font-style: italic;
+      }
+      .markdown-body ul, .markdown-body ol {
+        margin-top: 0.5em;
+        margin-bottom: 0.75em;
+        padding-left: 1.25em;
+      }
+      .markdown-body ul {
+        list-style-type: disc;
+      }
+      .markdown-body ol {
+        list-style-type: decimal;
+      }
+      .markdown-body li {
+        margin-bottom: 0.25em;
+      }
+      .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+        font-weight: 700;
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+        line-height: 1.3;
+      }
+      .markdown-body h1 { font-size: 1.5em; }
+      .markdown-body h2 { font-size: 1.25em; }
+      .markdown-body h3 { font-size: 1.1em; }
+      
+      .markdown-body blockquote {
+        border-left: 4px solid #e5e7eb;
+        padding-left: 1em;
+        color: #4b5563;
+        font-style: italic;
+        margin: 1em 0;
+      }
+      .markdown-body code {
+        background-color: rgba(0, 0, 0, 0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.9em;
+      }
+      .markdown-body pre {
+        background-color: #f3f4f6;
+        padding: 1em;
+        border-radius: 0.5em;
+        overflow-x: auto;
+        margin: 1em 0;
+      }
+      .markdown-body a {
+        color: #005EB8;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      /* Specific override for user bubbles to ensure white text on blue background */
+      .bg-belhard-blue .markdown-body code {
+        background-color: rgba(255, 255, 255, 0.2);
+        color: white;
+      }
+      .bg-belhard-blue .markdown-body a {
+        color: white;
+      }
+      .bg-belhard-blue .markdown-body blockquote {
+        border-left-color: rgba(255,255,255,0.5);
+        color: rgba(255,255,255,0.9);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.32.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

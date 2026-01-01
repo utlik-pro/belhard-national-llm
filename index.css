@@ -1,0 +1,22 @@
+/* Additional styling for code blocks */
+.markdown-body pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 1em;
+  border-radius: 0.5rem;
+}
+
+/* Override some default styles for better integration */
+.hljs {
+  background: #1e1e1e !important;
+  color: #dcdcdc !important;
+}
+
+/* Inline code should not use hljs styles */
+.markdown-body :not(pre) > code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
