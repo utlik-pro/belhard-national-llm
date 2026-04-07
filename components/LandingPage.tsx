@@ -46,20 +46,17 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onGoToRegister }
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled ? 'bg-white/95 backdrop-blur-md shadow-md' : 'bg-transparent'
       }`}>
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-300 ${
               isScrolled ? 'bg-belhard-blue' : 'bg-white'
             }`}>
-              <Brain className={`w-6 h-6 transition-colors duration-300 ${isScrolled ? 'text-white' : 'text-belhard-blue'}`} />
+              <Brain className={`w-5 h-5 sm:w-6 sm:h-6 transition-colors duration-300 ${isScrolled ? 'text-white' : 'text-belhard-blue'}`} />
             </div>
-            <div>
-              <span className={`font-bold text-lg transition-colors duration-300 ${isScrolled ? 'text-gray-900' : 'text-white'}`}>Belhard AI</span>
-              <span className={`hidden sm:inline text-xs ml-2 transition-colors duration-300 ${isScrolled ? 'text-gray-500' : 'text-white/60'}`}>Национальная LLM</span>
-            </div>
+            <span className={`font-bold text-sm sm:text-lg truncate transition-colors duration-300 ${isScrolled ? 'text-gray-900' : 'text-white'}`}>Belhard AI</span>
           </div>
 
-          <div className={`hidden md:flex items-center gap-6 text-sm font-medium transition-colors duration-300 ${isScrolled ? 'text-gray-600' : 'text-white/80'}`}>
+          <div className={`hidden lg:flex items-center gap-6 text-sm font-medium transition-colors duration-300 ${isScrolled ? 'text-gray-600' : 'text-white/80'}`}>
             {[
               ['problem', 'Проблема'],
               ['solution', 'Решение'],
@@ -81,10 +78,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onGoToRegister }
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <button
               onClick={onGoToLogin}
-              className={`text-sm font-medium transition-colors duration-300 ${
+              className={`hidden sm:block text-sm font-medium transition-colors duration-300 ${
                 isScrolled ? 'text-gray-600 hover:text-belhard-blue' : 'text-white hover:text-white/80'
               }`}
             >
@@ -92,7 +89,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onGoToRegister }
             </button>
             <button
               onClick={onGoToRegister}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-xl transition-all duration-300 shadow-lg ${
+              className={`px-3 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-xl transition-all duration-300 shadow-lg ${
                 isScrolled
                   ? 'bg-belhard-blue text-white hover:bg-belhard-dark shadow-belhard-blue/20'
                   : 'bg-white text-belhard-blue hover:bg-white/90 shadow-white/10'
