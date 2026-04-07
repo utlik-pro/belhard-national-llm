@@ -18,10 +18,23 @@ function headers(): Record<string, string> {
   return h;
 }
 
+async function safeFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url(path), { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return res;
+  } catch {
+    clearTimeout(timeout);
+    throw new Error('API_UNAVAILABLE');
+  }
+}
+
 // ==================== CHATS ====================
 
 export async function fetchChats(): Promise<ChatSession[]> {
-  const res = await fetch(url('/api/chats'), { headers: headers() });
+  const res = await safeFetch('/api/chats', { headers: headers() });
   if (!res.ok) return [];
   const data = await res.json();
   return data.map((c: any) => ({
@@ -31,7 +44,7 @@ export async function fetchChats(): Promise<ChatSession[]> {
 }
 
 export async function createChat(title: string, department: DepartmentId, country: CountryId): Promise<ChatSession> {
-  const res = await fetch(url('/api/chats'), {
+  const res = await safeFetch('/api/chats', {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ title, department, country }),
   });
@@ -40,7 +53,7 @@ export async function createChat(title: string, department: DepartmentId, countr
 }
 
 export async function fetchChatMessages(chatId: string): Promise<Message[]> {
-  const res = await fetch(url(`/api/chats/${chatId}`), { headers: headers() });
+  const res = await safeFetch(`/api/chats/${chatId}`), { headers: headers() });
   if (!res.ok) return [];
   const data = await res.json();
   return (data.messages || []).map((m: any) => ({
@@ -50,24 +63,24 @@ export async function fetchChatMessages(chatId: string): Promise<Message[]> {
 }
 
 export async function saveMessage(chatId: string, role: string, content: string, department?: string, sources?: any[]): Promise<void> {
-  await fetch(url(`/api/chats/${chatId}/messages`), {
+  await safeFetch(`/api/chats/${chatId}/messages`), {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ role, content, department, sources }),
   });
 }
 
 export async function deleteChat(chatId: string): Promise<void> {
-  await fetch(url(`/api/chats/${chatId}`), { method: 'DELETE', headers: headers() });
+  await safeFetch(`/api/chats/${chatId}`), { method: 'DELETE', headers: headers() });
 }
 
 export async function renameChat(chatId: string, title: string): Promise<void> {
-  await fetch(url(`/api/chats/${chatId}`), {
+  await safeFetch(`/api/chats/${chatId}`), {
     method: 'PATCH', headers: headers(), body: JSON.stringify({ title }),
   });
 }
 
 export async function archiveChat(chatId: string, archived: boolean): Promise<void> {
-  await fetch(url(`/api/chats/${chatId}`), {
+  await safeFetch(`/api/chats/${chatId}`), {
     method: 'PATCH', headers: headers(), body: JSON.stringify({ archived }),
   });
 }
@@ -76,7 +89,7 @@ export async function archiveChat(chatId: string, archived: boolean): Promise<vo
 
 export async function fetchDocuments(country?: string): Promise<Source[]> {
   const path = country ? `/api/documents?country=${country}` : '/api/documents';
-  const res = await fetch(url(path), { headers: headers() });
+  const res = await safeFetch(path, { headers: headers() });
   if (!res.ok) return [];
   const data = await res.json();
   return data.map((d: any) => ({
@@ -87,7 +100,7 @@ export async function fetchDocuments(country?: string): Promise<Source[]> {
 }
 
 export async function fetchDocumentFull(docId: string): Promise<Source | null> {
-  const res = await fetch(url(`/api/documents/${docId}`), { headers: headers() });
+  const res = await safeFetch(`/api/documents/${docId}`), { headers: headers() });
   if (!res.ok) return null;
   return res.json();
 }
