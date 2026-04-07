@@ -115,20 +115,21 @@ const LandingPage: React.FC<LandingPageProps> = ({ onGoToLogin, onGoToRegister }
           }} />
         </div>
 
-        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm text-white/80 mb-8 border border-white/10">
-            <Shield className="w-4 h-4" />
-            Суверенная AI-платформа для Республики Беларусь
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center pt-16 sm:pt-0">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 backdrop-blur-sm rounded-full text-xs sm:text-sm text-white/80 mb-6 sm:mb-8 border border-white/10">
+            <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+            <span className="hidden sm:inline">Суверенная AI-платформа для Республики Беларусь</span>
+            <span className="sm:hidden">Суверенная AI-платформа РБ</span>
           </div>
 
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-4 sm:mb-6">
             Национальная<br />
             <span className="bg-gradient-to-r from-blue-300 via-cyan-300 to-green-300 bg-clip-text text-transparent">
               языковая модель
             </span>
           </h1>
 
-          <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed">
             Первая белорусская LLM, работающая в закрытом контуре.
             Разработана группой компаний Belhard совместно с НАН Беларуси
             для безопасной работы с корпоративными данными.
