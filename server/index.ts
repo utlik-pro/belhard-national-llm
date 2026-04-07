@@ -10,9 +10,9 @@ import documentsRouter from './routes/documents.js';
 
 const app = express();
 
-// CORS — allow Vercel frontend
+// CORS — allow all frontends
 app.use(cors({
-  origin: [config.frontendUrl, 'http://localhost:3000', 'http://localhost:5173'],
+  origin: true,
   credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
