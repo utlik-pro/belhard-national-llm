@@ -10,6 +10,7 @@ interface ChatInputProps {
   onAddSource: () => void;
   isGenerating: boolean;
   selectedDepartment: DepartmentId;
+  departments?: typeof DEPARTMENTS;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -19,10 +20,11 @@ const ChatInput: React.FC<ChatInputProps> = ({
   onAddSource,
   isGenerating,
   selectedDepartment,
+  departments = DEPARTMENTS,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const currentDept = DEPARTMENTS.find(d => d.id === selectedDepartment);
+  const currentDept = departments.find(d => d.id === selectedDepartment);
 
   // Auto-resize textarea
   useEffect(() => {

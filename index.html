@@ -59,7 +59,11 @@
       body {
         font-family: 'Inter', sans-serif;
         background-color: #F8F9FA;
-        overflow: hidden; /* Prevent body scroll, handle in app */
+        overflow: hidden; /* Scroll handled by individual views */
+      }
+      /* Allow scroll on landing page */
+      #root > div.h-screen.overflow-y-auto {
+        overflow-y: auto !important;
       }
       /* Custom Scrollbar for sleek look */
       ::-webkit-scrollbar {

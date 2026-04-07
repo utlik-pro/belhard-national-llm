@@ -24,8 +24,9 @@ interface ChunkSearchResult {
 }
 
 class SearchService {
-  // Расширенные стоп-слова РБ
+  // Стоп-слова: русский + азербайджанский + английский
   private stopWords = new Set([
+    // Russian
     'и', 'в', 'на', 'с', 'по', 'о', 'об', 'для', 'к', 'у',
     'от', 'до', 'из', 'за', 'при', 'не', 'без', 'под', 'над',
     'так', 'как', 'что', 'это', 'вам', 'вас', 'или', 'том',
@@ -33,33 +34,94 @@ class SearchService {
     'быть', 'был', 'была', 'были', 'будет', 'есть', 'нет',
     'можно', 'нужно', 'надо', 'какой', 'какая', 'какие',
     'если', 'когда', 'где', 'чем', 'кто', 'все', 'всё', 'ещё', 'еще',
-    'уже', 'только', 'также', 'тоже', 'очень', 'более', 'менее'
+    'уже', 'только', 'также', 'тоже', 'очень', 'более', 'менее',
+    // Azerbaijani
+    'və', 'ilə', 'bir', 'bu', 'o', 'da', 'də', 'ki', 'üçün',
+    'olan', 'olur', 'ola', 'var', 'yox', 'daha', 'çox', 'az',
+    'nə', 'necə', 'kim', 'hansı', 'hara', 'amma', 'lakin',
+    // English
+    'the', 'is', 'at', 'of', 'on', 'and', 'or', 'to', 'in', 'for',
+    'with', 'not', 'are', 'was', 'but', 'can', 'has', 'had', 'have',
+    'what', 'how', 'who', 'when', 'where', 'which', 'this', 'that',
   ]);
 
-  // Синонимы для улучшения поиска
+  // Трёхъязычные синонимы: русский ↔ азербайджанский ↔ английский
   private synonyms: Record<string, string[]> = {
-    'отпуск': ['отдых', 'каникулы', 'vacation'],
-    'зарплата': ['оклад', 'заработок', 'вознаграждение', 'оплата'],
-    'увольнение': ['расторжение', 'прекращение', 'уход'],
-    'договор': ['контракт', 'соглашение'],
-    'работник': ['сотрудник', 'служащий', 'работающий'],
-    'сотрудник': ['работник', 'служащий', 'персонал'],
-    'налог': ['сбор', 'пошлина', 'взнос'],
-    'компания': ['организация', 'предприятие', 'фирма'],
-    'трудовой': ['рабочий', 'служебный'],
-    'больничный': ['нетрудоспособность', 'болезнь', 'лист'],
-    'декрет': ['материнство', 'беременность', 'роды'],
-    'испытательный': ['пробный', 'испытание'],
-    'премия': ['бонус', 'надбавка', 'вознаграждение']
+    // Трудовое право / Əmək hüququ / Labor law
+    'отпуск': ['отдых', 'каникулы', 'vacation', 'məzuniyyət', 'istirahət'],
+    'зарплата': ['оклад', 'заработок', 'вознаграждение', 'оплата', 'salary', 'əmək haqqı', 'maaş'],
+    'увольнение': ['расторжение', 'прекращение', 'уход', 'dismissal', 'termination', 'xitam', 'işdən çıxma', 'işdən çıxarılma', 'azad'],
+    'договор': ['контракт', 'соглашение', 'contract', 'agreement', 'müqavilə', 'əmək müqaviləsi'],
+    'работник': ['сотрудник', 'служащий', 'работающий', 'worker', 'employee', 'işçi', 'əməkdaş'],
+    'сотрудник': ['работник', 'служащий', 'персонал', 'employee', 'staff', 'işçi', 'əməkdaş'],
+    'работодатель': ['наниматель', 'employer', 'işəgötürən'],
+    'трудовой': ['рабочий', 'служебный', 'labor', 'əmək'],
+    'больничный': ['нетрудоспособность', 'болезнь', 'лист', 'sick leave', 'xəstəlik', 'əmək qabiliyyəti'],
+    'декрет': ['материнство', 'беременность', 'роды', 'maternity', 'hamiləlik', 'analıq'],
+    'испытательный': ['пробный', 'испытание', 'probation', 'sınaq', 'sınaq müddəti'],
+    'премия': ['бонус', 'надбавка', 'вознаграждение', 'bonus', 'mükafat'],
+    'компенсация': ['выплата', 'возмещение', 'compensation', 'kompensasiya', 'ödəniş'],
+    'права': ['право', 'rights', 'hüquq', 'hüquqlar'],
+
+    // Семейное право / Ailə hüququ / Family law
+    'брак': ['женитьба', 'замужество', 'marriage', 'nikah', 'evlənmə'],
+    'развод': ['расторжение брака', 'divorce', 'boşanma', 'nikahın pozulması'],
+    'алименты': ['содержание', 'alimony', 'aliment'],
+    'ребенок': ['дети', 'несовершеннолетний', 'child', 'children', 'uşaq', 'övlad'],
+    'опека': ['попечительство', 'custody', 'guardianship', 'qəyyumluq', 'himayə'],
+    'наследство': ['наследование', 'inheritance', 'miras', 'vərəsəlik'],
+    'имущество': ['собственность', 'property', 'əmlak', 'mülkiyyət'],
+
+    // Налоговое право / Vergi hüququ / Tax law
+    'налог': ['сбор', 'пошлина', 'взнос', 'tax', 'vergi', 'rüsum'],
+    'декларация': ['отчет', 'declaration', 'bəyannamə'],
+    'льгота': ['скидка', 'освобождение', 'benefit', 'exemption', 'güzəşt', 'azadolma'],
+    'доход': ['заработок', 'income', 'gəlir'],
+    'штраф': ['пеня', 'санкция', 'penalty', 'fine', 'cərimə'],
+
+    // Недвижимость / Əmlak / Property
+    'квартира': ['жилье', 'жилище', 'apartment', 'housing', 'mənzil', 'yaşayış'],
+    'аренда': ['найм', 'lease', 'rent', 'icarə', 'kirayə'],
+    'земля': ['участок', 'land', 'plot', 'torpaq', 'sahə'],
+
+    // Финансы (BY specific)
+    'выручка': ['доход', 'оборот', 'продажи', 'revenue'],
+    'прибыль': ['доход', 'заработок', 'profit', 'ebitda', 'mənfəət'],
+    'расходы': ['затраты', 'издержки', 'costs', 'xərclər'],
+    'финансы': ['финансовый', 'бюджет', 'деньги', 'finance', 'maliyyə'],
+    'квартал': ['q1', 'q2', 'q3', 'q4', 'квартальный'],
+
+    // Общие юридические / General legal
+    'закон': ['законодательство', 'law', 'legislation', 'qanun', 'qanunvericilik'],
+    'суд': ['судебный', 'court', 'məhkəmə'],
+    'статья': ['норма', 'article', 'maddə'],
+    'кодекс': ['code', 'məcəllə'],
+    'гражданин': ['лицо', 'citizen', 'vətəndaş', 'şəxs'],
   };
 
   // Department-specific keywords для улучшения релевантности
   private departmentKeywords: Record<DepartmentId, string[]> = {
-    'hr': ['труд', 'работ', 'отпуск', 'увольнен', 'договор', 'заработ', 'кадр', 'прием', 'документ', 'справк', 'сотрудник', 'устро', 'декабр', 'январ', 'феврал', 'март', 'апрел', 'май', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр'],
-    'accounting': ['налог', 'бухгалтер', 'отчет', 'платеж', 'декларац', 'учет', 'взнос', 'ставк', 'расчет', 'сотрудник', 'труд', 'устро', 'прием', 'декабр', 'январ', 'феврал', 'март', 'апрел', 'май', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр'],
-    'legal': ['договор', 'право', 'закон', 'гражданск', 'суд', 'обязательств', 'ответственн', 'нарушен'],
-    'it': ['информац', 'данн', 'защит', 'цифров', 'програм', 'пвт', 'разработк', 'програмн', 'сотрудник', 'устро', 'прием', 'декабр'],
-    'general': ['сотрудник', 'труд', 'работ', 'устро', 'прием', 'декабр', 'январ', 'феврал', 'март', 'апрел', 'май', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр']
+    // Belarus departments
+    'hr': ['труд', 'работ', 'отпуск', 'увольнен', 'договор', 'заработ', 'кадр', 'прием', 'документ', 'справк', 'сотрудник', 'устро', 'декабр', 'январ', 'феврал', 'март', 'апрел', 'май', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'зарплат', 'штат', 'персонал'],
+    'accounting': ['налог', 'бухгалтер', 'отчет', 'платеж', 'декларац', 'учет', 'взнос', 'ставк', 'расчет', 'финанс', 'выручк', 'прибыл', 'доход', 'расход', 'бюджет', 'квартал', 'актив', 'инвестиц', 'ebitda', 'рентабельн'],
+    'legal': ['договор', 'право', 'закон', 'гражданск', 'суд', 'обязательств', 'ответственн', 'нарушен', 'персональн', 'конфиденциальн', 'защит'],
+    'it': ['информац', 'данн', 'защит', 'цифров', 'програм', 'пвт', 'разработк', 'програмн', 'сотрудник', 'устро', 'прием', 'декабр', 'ai', 'ml', 'devops'],
+    'general': ['сотрудник', 'труд', 'работ', 'устро', 'прием', 'декабр', 'январ', 'феврал', 'март', 'апрел', 'май', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'финанс', 'выручк', 'прибыл', 'клиент',
+      // AZ cross-language: for general dept in AZ mode
+      'əmək', 'işçi', 'hüquq', 'qanun', 'maddə', 'məcəllə', 'vətəndaş'],
+    // Azerbaijan departments
+    'labor': ['əmək', 'işçi', 'işəgötürən', 'müqavilə', 'əmək haqqı', 'maaş', 'məzuniyyət', 'xitam', 'işdən',
+      'труд', 'работ', 'увольнен', 'отпуск', 'зарплат', 'договор', 'компенсац', 'работник', 'права',
+      'labor', 'worker', 'employee', 'salary', 'dismissal', 'vacation', 'contract'],
+    'family': ['ailə', 'nikah', 'boşanma', 'aliment', 'uşaq', 'övlad', 'qəyyum', 'miras', 'vərəsə',
+      'семь', 'брак', 'развод', 'алимент', 'ребен', 'дети', 'наследств', 'опек',
+      'family', 'marriage', 'divorce', 'child', 'custody', 'inheritance'],
+    'property': ['əmlak', 'mülkiyyət', 'torpaq', 'mənzil', 'icarə', 'tikinti', 'daşınmaz',
+      'имущест', 'собственн', 'земл', 'квартир', 'жилищ', 'аренд', 'недвижим',
+      'property', 'land', 'apartment', 'housing', 'lease', 'real estate'],
+    'tax': ['vergi', 'rüsum', 'bəyannamə', 'güzəşt', 'gəlir', 'cərimə', 'ödəniş', 'büdcə',
+      'налог', 'декларац', 'льгот', 'доход', 'штраф', 'сбор', 'пошлин',
+      'tax', 'declaration', 'income', 'penalty', 'fee', 'exemption'],
   };
 
   /**
@@ -97,11 +159,17 @@ class SearchService {
 
   /**
    * Получение синонимов для слова
+   * Сравнивает как полные формы, так и основы (stems) для кросс-языкового поиска
    */
   private getSynonyms(word: string): string[] {
     const lowerWord = word.toLowerCase();
+    const stemmedWord = this.normalizeWord(lowerWord);
     for (const [key, synonyms] of Object.entries(this.synonyms)) {
-      if (lowerWord.includes(key) || synonyms.some(s => lowerWord.includes(s))) {
+      const stemmedKey = this.normalizeWord(key);
+      // Match: word contains key, key contains word stem, or stems match
+      if (lowerWord.includes(key) || key.includes(stemmedWord) ||
+          stemmedWord === stemmedKey || stemmedWord.includes(stemmedKey) || stemmedKey.includes(stemmedWord) ||
+          synonyms.some(s => lowerWord.includes(s) || s.includes(stemmedWord))) {
         return [key, ...synonyms];
       }
     }
@@ -110,11 +178,15 @@ class SearchService {
 
   /**
    * Улучшенный стемминг для русского языка
+   * Не применяется к азербайджанским и английским словам
    */
   private normalizeWord(word: string): string {
     // Сначала проверяем специальные слова, которые не нужно обрезать
-    const preserveWords = ['статья', 'глава', 'раздел', 'пункт', 'часть'];
+    const preserveWords = ['статья', 'глава', 'раздел', 'пункт', 'часть', 'maddə', 'fəsil', 'bölmə'];
     if (preserveWords.includes(word)) return word;
+
+    // Skip stemming for non-Cyrillic words (Azerbaijani, English)
+    if (!/^[а-яёА-ЯЁ]+$/.test(word)) return word;
 
     // Удаление суффиксов прилагательных
     const adjSuffixes = ['ского', 'ному', 'ными', 'ными', 'ную', 'ного', 'ная', 'ное', 'ный', 'ной'];
@@ -241,6 +313,17 @@ class SearchService {
 
     if (isClientDoc && (isClientQuery || isClientKeywordQuery)) {
       score += 15000; // Гарантирует что все клиенты будут в топе
+    }
+
+    // Паттерны запросов о финансах
+    const isFinanceDoc = lowerCitation.includes('финанс') || lowerCitation.includes('отчёт') || lowerCitation.includes('отчет');
+    const isFinanceQuery = /выручк|прибыл|доход|расход|финанс|бюджет|квартал|ebitda|рентабельн|актив|инвестиц|отчет|отчёт/i.test(lowerQuery);
+    const isFinanceKeywordQuery = queryKeywords.some(kw =>
+      ['выручк', 'прибыл', 'доход', 'расход', 'финанс', 'бюджет', 'квартал', 'актив', 'инвестиц', 'отчет', 'отчёт'].some(f => kw.includes(f))
+    );
+
+    if (isFinanceDoc && (isFinanceQuery || isFinanceKeywordQuery)) {
+      score += 15000; // Гарантирует что финансовые данные будут в топе
     }
 
     // === 3. ПОИСК ПО ИМЕНАМ ===
@@ -620,6 +703,21 @@ class SearchService {
           // Запрос без конкретной даты - бонус всем записям с месяцем
           entry.score += 100;
           if (queryMonth && lowerContent.includes(queryMonth)) {
+            entry.score += 50;
+          }
+        }
+      }
+
+      // Бонус для финансовых документов
+      const isFinanceDoc = lowerCitation.includes('финанс') || lowerCitation.includes('отчёт') || lowerCitation.includes('отчет');
+      const isFinanceQuery = /выручк|прибыл|доход|расход|финанс|бюджет|квартал|ebitda|рентабельн|актив|инвестиц/i.test(lowerQuery);
+      if (isFinanceDoc && isFinanceQuery) {
+        entry.score += 100;
+        // Бонус за конкретный квартал
+        const quarterMatch = lowerQuery.match(/q([1-4])|([1-4])\s*квартал/i);
+        if (quarterMatch) {
+          const quarter = quarterMatch[1] || quarterMatch[2];
+          if (lowerContent.includes(`q${quarter}`) || lowerContent.includes(`${quarter} квартал`)) {
             entry.score += 50;
           }
         }

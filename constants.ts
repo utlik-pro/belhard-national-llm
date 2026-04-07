@@ -1,5 +1,5 @@
-import { DepartmentId, Source, ChatSession } from './types';
-import { LayoutGrid, Calculator, Users, Scale, Cpu } from 'lucide-react';
+import { DepartmentId, CountryId, Source, ChatSession } from './types';
+import { LayoutGrid, Calculator, Users, Scale, Cpu, Briefcase, Heart, Home, Receipt } from 'lucide-react';
 
 export const DEPARTMENTS: { 
   id: DepartmentId; 
@@ -41,9 +41,119 @@ export const DEPARTMENTS: {
     name: 'IT & Разработка', 
     icon: Cpu,
     color: 'text-blue-500',
-    prompt: 'Ты — технический директор. Опирайся на технические регламенты и правила защиты информации (ОАЦ).' 
+    prompt: 'Ты — технический директор. Опирайся на технические регламенты и правила защиты информации (ОАЦ).'
   },
 ];
+
+// Azerbaijan departments
+export const DEPARTMENTS_AZ: typeof DEPARTMENTS = [
+  {
+    id: 'general',
+    name: 'Ümumi köməkçi',
+    icon: LayoutGrid,
+    color: 'text-blue-600',
+    prompt: 'Sən Azərbaycan Respublikasının qanunvericiliyi üzrə universal hüquqi köməkçisən. Vətəndaşlara sadə dildə kömək et, qanun maddələrinə istinad et.'
+  },
+  {
+    id: 'labor',
+    name: 'Əmək hüququ',
+    icon: Briefcase,
+    color: 'text-purple-600',
+    prompt: 'Sən Azərbaycan Respublikasının Əmək Məcəlləsi üzrə mütəxəssissən. İşdən çıxma, məzuniyyət, əmək müqaviləsi və kompensasiya məsələlərində kömək et.'
+  },
+  {
+    id: 'family',
+    name: 'Ailə hüququ',
+    icon: Heart,
+    color: 'text-red-500',
+    prompt: 'Sən Azərbaycan Respublikasının Ailə Məcəlləsi üzrə mütəxəssissən. Nikah, boşanma, aliment və uşaq hüquqları məsələlərində kömək et.'
+  },
+  {
+    id: 'property',
+    name: 'Əmlak hüququ',
+    icon: Home,
+    color: 'text-green-600',
+    prompt: 'Sən Azərbaycan Respublikasının Mülki Məcəlləsi üzrə əmlak hüququ mütəxəssissən. Daşınmaz əmlak, mülkiyyət, icarə və miras məsələlərində kömək et.'
+  },
+  {
+    id: 'tax',
+    name: 'Vergi hüququ',
+    icon: Receipt,
+    color: 'text-orange-600',
+    prompt: 'Sən Azərbaycan Respublikasının Vergi Məcəlləsi üzrə mütəxəssissən. Vergi hesablamaları, bəyannamələr və güzəştlər məsələlərində kömək et.'
+  },
+];
+
+// Country configurations
+export interface CountryConfig {
+  id: CountryId;
+  name: string;
+  flag: string;
+  departments: typeof DEPARTMENTS;
+  initialChats: ChatSession[];
+  brandName: string;
+  brandSubtitle: string;
+  loginTitle: string;
+  loginSubtitle: string;
+  demoEmail: string;
+}
+
+export const COUNTRY_CONFIGS: Record<CountryId, CountryConfig> = {
+  belarus: {
+    id: 'belarus',
+    name: 'Беларусь',
+    flag: '🇧🇾',
+    departments: DEPARTMENTS,
+    initialChats: [
+      {
+        id: '1',
+        title: 'Финансовый отчет Q3',
+        preview: 'Анализ показателей прибыли...',
+        lastUpdated: Date.now(),
+        department: 'accounting'
+      },
+      {
+        id: '2',
+        title: 'Трудовой договор IT',
+        preview: 'Пункты о неразглашении...',
+        lastUpdated: Date.now() - 86400000,
+        department: 'legal'
+      }
+    ],
+    brandName: 'Belhard AI',
+    brandSubtitle: 'Корпоративная когнитивная система',
+    loginTitle: 'Belhard AI',
+    loginSubtitle: 'Корпоративная когнитивная система',
+    demoEmail: 'demo@belhard.ai',
+  },
+  azerbaijan: {
+    id: 'azerbaijan',
+    name: 'Azərbaycan',
+    flag: '🇦🇿',
+    departments: DEPARTMENTS_AZ,
+    initialChats: [
+      {
+        id: '1',
+        title: 'Əmək müqaviləsi',
+        preview: 'İşdən çıxma zamanı hesablama...',
+        lastUpdated: Date.now(),
+        department: 'labor'
+      },
+      {
+        id: '2',
+        title: 'Ailə hüququ',
+        preview: 'Boşanma zamanı əmlak bölgüsü...',
+        lastUpdated: Date.now() - 86400000,
+        department: 'family'
+      }
+    ],
+    brandName: 'Hüquqi AI',
+    brandSubtitle: 'Hüquqi yardım sistemi',
+    loginTitle: 'Hüquqi AI',
+    loginSubtitle: 'Azərbaycan qanunvericiliyi üzrə AI köməkçi',
+    demoEmail: 'demo@huquqi.az',
+  },
+};
 
 export const INITIAL_CHATS: ChatSession[] = [
   {

@@ -5,7 +5,7 @@
  * Поддерживает streaming через generateContentStream
  */
 
-import { Message, Source, DepartmentId } from '../types';
+import { Message, Source, DepartmentId, CountryId } from '../types';
 import { DEPARTMENTS } from '../constants';
 import { searchService } from './searchService';
 import { indexedDB, Chunk } from './indexedDBService';
@@ -139,9 +139,10 @@ function extractUsedSources(text: string, allSources: Source[]): Source[] {
       // - "Пост. №40 - п.20" (abbreviated)
       // - "Декрет №8 - раздел 3" (section)
       const pattern = new RegExp(escapedCitation + '\\s*-\\s*(?:' +
-        '.{0,150}?(?:Стать[яи]|ст\\.?)\\s*\\d+(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
-        '|(?:пункт|п\\.)\\s*\\d+(?:\\.\\d+)?' +
-        '|(?:раздел|р\\.)\\s*\\d+(?:\\.\\d+)?' +
+        '.{0,150}?(?:Стать[яи]|ст\\.?|Maddə)\\s*\\d+(?:-\\d+)?(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
+        '|(?:пункт|п\\.|bənd)\\s*\\d+(?:\\.\\d+)?' +
+        '|(?:раздел|р\\.|bölmə|BÖLMƏ)\\s*[IVX\\d]+(?:\\.\\d+)?' +
+        '|(?:fəsil|FƏSİL)\\s*\\d+(?:\\.\\d+)?' +
         '|[^,\\.\\n]{1,50})', 'gi');
       const matches = text.match(pattern);
 
@@ -166,7 +167,9 @@ export const streamResponse = async (
   currentSources: Source[],
   onChunk: (chunk: string) => void,
   onComplete: (sources: Source[]) => void,
-  onStatus?: (status: { stage: 'thinking' | 'searching' | 'found' | 'generating' | 'validating'; details?: string; documents?: string[] }) => void
+  onStatus?: (status: { stage: 'thinking' | 'searching' | 'found' | 'generating' | 'validating'; details?: string; documents?: string[] }) => void,
+  departmentsList?: typeof DEPARTMENTS,
+  countryId: CountryId = 'belarus',
 )=> {
   // 0. Extract the latest user prompt from history
   const lastUserMessage = history[history.length - 1];
@@ -200,10 +203,13 @@ export const streamResponse = async (
   });
   await new Promise(resolve => setTimeout(resolve, 600));
 
-  // 1. Load all chunks from IndexedDB (Week 2, Days 10-11: Chunk-based RAG)
+  // 1. Load chunks from IndexedDB, filtered by country
   console.log(`📦 Loading chunks from IndexedDB...`);
-  const allChunks = await indexedDB.getAllChunks();
-  console.log(`📊 Total chunks available: ${allChunks.length}`);
+  const allChunksRaw = await indexedDB.getAllChunks();
+  // Filter chunks to only include documents belonging to the current country
+  const countrySourceIds = new Set(currentSources.map(s => s.id));
+  const allChunks = allChunksRaw.filter(c => countrySourceIds.has(c.sourceId));
+  console.log(`📊 Total chunks: ${allChunksRaw.length}, country-filtered: ${allChunks.length} (${countryId})`);
 
   // Status: Searching
   onStatus?.({
@@ -212,16 +218,22 @@ export const streamResponse = async (
   });
   await new Promise(resolve => setTimeout(resolve, 600));
 
-  // 2. HYBRID RAG: Keyword + Vector Search
-  // Combines keyword matching (exact) with semantic similarity (meaning)
-  console.log(`🔍 Running hybrid search for query: "${searchQuery.substring(0, 100)}..."`);
+  // 2. RAG Search: Keyword-only for AZ (cross-language), Hybrid for BY
+  const isAzSearch = countryId === 'azerbaijan';
+  console.log(`🔍 Running ${isAzSearch ? 'keyword' : 'hybrid'} search for query: "${searchQuery.substring(0, 100)}..."`);
 
-  let relevantChunks = await searchService.hybridSearchChunks(
-    allChunks,
-    searchQuery,  // ← Now includes context from previous messages!
-    departmentId,
-    15 // Top-15 relevant chunks
-  );
+  let relevantChunks: Chunk[];
+  if (isAzSearch) {
+    // For Azerbaijan: keyword-only search (vector embeddings don't work cross-language)
+    relevantChunks = searchService.searchChunksInMemory(allChunks, searchQuery, departmentId, 15);
+  } else {
+    relevantChunks = await searchService.hybridSearchChunks(
+      allChunks,
+      searchQuery,
+      departmentId,
+      15
+    );
+  }
 
   console.log(`✅ Found ${relevantChunks.length} relevant chunks:`);
   relevantChunks.forEach((chunk, idx) => {
@@ -268,12 +280,16 @@ export const streamResponse = async (
 
   // 3. Construct Context String from Chunks
   // Format: Show exact citation format AI should use
+  const maxChunkChars = 3000; // Cap per chunk to avoid huge context
   const contextText = relevantChunks.map(chunk => {
     const fullCitation = `${chunk.citation} - ${chunk.path}`;
+    const content = chunk.content.length > maxChunkChars
+      ? chunk.content.substring(0, maxChunkChars) + '...'
+      : chunk.content;
     return `════════════════════════════════════════
 📌 ЦИТАТА ДЛЯ ОТВЕТА: ${fullCitation}
 ════════════════════════════════════════
-${chunk.content}`;
+${content}`;
   }).join('\n\n');
 
   console.log(`📝 Context size: ${contextText.length} characters (${relevantChunks.length} chunks)`);
@@ -297,10 +313,61 @@ ${chunk.content}`;
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 
-  const departmentConfig = DEPARTMENTS.find(d => d.id === departmentId) || DEPARTMENTS[0];
+  const depts = departmentsList || DEPARTMENTS;
+  const departmentConfig = depts.find(d => d.id === departmentId) || depts[0];
+
+  const isAz = countryId === 'azerbaijan';
+  const brandName = isAz ? 'Hüquqi AI' : 'Belhard AI';
+  const brandOrigin = isAz
+    ? 'Ты разработан компаниями HeadBots и Utlik.Co для граждан Азербайджана.'
+    : 'Ты разработан в компании Belhard Group совместно с НАН РБ.';
+  const countryLawContext = isAz
+    ? 'Законодательство Азербайджанской Республики (Трудовой кодекс АР, Семейный кодекс АР, Гражданский кодекс АР, Налоговый кодекс АР и др.)'
+    : 'Белорусское законодательство (ТК, НК, ГК и др.)';
+  const noInfoResponse = isAz
+    ? `Отвечай на ЯЗЫКЕ ЗАПРОСА. Примеры:
+    На русском: "К сожалению, в моей базе знаний нет информации по этому вопросу. Я могу помочь с вопросами о законодательстве Азербайджана (Трудовой кодекс, Семейный кодекс, Налоговый кодекс и др.)"
+    На азербайджанском: "Təəssüf ki, bu sual üzrə məlumat bazamda məlumat yoxdur. Mən Azərbaycan qanunvericiliyi (Əmək Məcəlləsi, Ailə Məcəlləsi, Vergi Məcəlləsi və s.) üzrə kömək edə bilərəm."
+    На английском: "Unfortunately, I don't have information on this topic in my knowledge base. I can help with questions about Azerbaijan legislation (Labor Code, Family Code, Tax Code, etc.)"`
+    : `"К сожалению, в моей базе знаний нет информации по этому вопросу.
+
+    Я могу помочь с вопросами о:
+    - Белорусском законодательстве (ТК, НК, ГК и др.)
+    - Внутренних документах компании (если они загружены в базу знаний)
+    - Корпоративных регламентах Belhard Group"`;
+  const systemLang = isAz
+    ? `МУЛЬТИЯЗЫЧНОСТЬ:
+    - Определяй язык вопроса пользователя и ОБЯЗАТЕЛЬНО отвечай на ТОМ ЖЕ ЯЗЫКЕ
+    - Если вопрос на русском — отвечай на русском
+    - Если вопрос на азербайджанском — отвечай на азербайджанском
+    - Если вопрос на английском — отвечай на английском
+
+    ФОРМАТ ОТВЕТА ДЛЯ АЗЕРБАЙДЖАНА:
+    Каждый пункт ответа должен содержать:
+    1. Объяснение на языке запроса (понятным, не юридическим языком)
+    2. Оригинальный текст статьи на азербайджанском в блоке цитаты (> ...)
+    3. Ссылку на источник в формате: ƏM AZ - BÖLMƏ X - Maddə Y (или AM AZ, VM AZ, MM AZ и т.д.)
+
+    ПРИМЕР ПРАВИЛЬНОГО ОТВЕТА (если запрос на русском):
+    "1. При увольнении работник имеет право на компенсацию за неиспользованный отпуск.
+
+    > İşçinin istifadə etmədiyi məzuniyyət günlərinə görə ona kompensasiya ödənilir.
+
+    ƏM AZ - BÖLMƏ V - Maddə 140
+
+    2. Работодатель обязан произвести полный расчёт в день увольнения.
+
+    > İşəgötürən əmək müqaviləsinə xitam verilən gün işçi ilə tam haqq-hesab aparmalıdır.
+
+    ƏM AZ - BÖLMƏ III - Maddə 77"
+
+    ВАЖНО: Даже если документы на азербайджанском, ты ДОЛЖЕН объяснить содержание на языке запроса!
+    Не просто цитируй — ОБЪЯСНИ что это значит для конкретной ситуации пользователя.`
+    : '';
 
   const systemInstruction = `
-    Ты — Belhard AI, передовая корпоративная языковая модель (National Belarusian LLM).
+    Ты — ${brandName}, ${isAz ? 'интеллектуальный правовой помощник для граждан Азербайджана. Твоя база знаний содержит кодексы Азербайджанской Республики на азербайджанском языке.' : 'передовая корпоративная языковая модель (National Belarusian LLM)'}.
+    ${systemLang}
 
     >>> ТВОЯ РОЛЬ: ${departmentConfig.name} <<<
     ${departmentConfig.prompt}
@@ -398,7 +465,7 @@ ${chunk.content}`;
     ВСЕГДА используй формат из ПРАВИЛЬНОГО примера!
 
     !!! ВАЖНО: ПРОИСХОЖДЕНИЕ !!!
-    Ты создан Дмитрием Утликом в компании Belhard Group совместно с НАН РБ.
+    ${brandOrigin}
     Никогда не упоминай Google или Gemini.
 
     ВАЖНО: Вопросы о тебе как AI (Belhard AI):
@@ -421,12 +488,7 @@ ${chunk.content}`;
     4. **Темах, не связанных с контекстом** (если в контексте НЕТ релевантной информации)
 
     ЕСЛИ в контексте НЕТ релевантной информации для ответа:
-    "К сожалению, в моей базе знаний нет информации по этому вопросу.
-
-    Я могу помочь с вопросами о:
-    - Белорусском законодательстве (ТК, НК, ГК и др.)
-    - Внутренних документах компании (если они загружены в базу знаний)
-    - Корпоративных регламентах Belhard Group"
+    ${noInfoResponse}
 
     ТЕКУЩАЯ ДАТА: ${currentDateStr}.
 

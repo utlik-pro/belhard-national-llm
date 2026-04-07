@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Plus, Search, MessageSquare, Settings, LogOut, LayoutGrid, Database, FileText, UploadCloud, Edit2, Trash2, X, MoreVertical, Archive } from 'lucide-react';
-import { ChatSession, Source } from '../types';
+import { ChatSession, Source, CountryId } from '../types';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface SidebarProps {
   history: ChatSession[];
   activeChatId: string | null;
   sources: Source[];
+  indexedSourceIds: Set<string>; // IDs документов, для которых созданы chunks
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onLogout: () => void;
@@ -19,6 +20,8 @@ interface SidebarProps {
   onDeleteChat: (id: string) => void;
   onArchiveChat: (id: string) => void;
   onRenameChat: (id: string, newTitle: string) => void;
+  brandName?: string;
+  selectedCountry?: CountryId;
 }
 
 type ViewMode = 'chats' | 'knowledge';
@@ -29,6 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   history,
   activeChatId,
   sources,
+  indexedSourceIds,
   onSelectChat,
   onNewChat,
   onLogout,
@@ -38,7 +42,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDeleteSource,
   onDeleteChat,
   onArchiveChat,
-  onRenameChat
+  onRenameChat,
+  brandName = 'Belhard AI',
+  selectedCountry = 'belarus',
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('chats');
   const [showArchived, setShowArchived] = useState(false);
@@ -82,7 +88,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="w-8 h-8 bg-belhard-blue rounded-lg flex items-center justify-center text-white shadow-sm">
             <LayoutGrid className="w-5 h-5" />
           </div>
-          Belhard AI
+          {brandName}
         </div>
         {/* Mobile Close Button */}
         <button 
@@ -175,7 +181,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {showArchived ? '← Назад' : 'Архив →'}
               </button>
             </div>
-            {history.filter(chat => showArchived ? chat.archived : !chat.archived).map((chat) => (
+            {history
+              .filter(chat => showArchived ? chat.archived : !chat.archived)
+              .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0))
+              .map((chat) => (
               <div
                 key={chat.id}
                 className={`w-full rounded-lg text-sm transition-all duration-200 group relative ${
@@ -327,9 +336,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded uppercase">
                             {source.type}
                         </span>
-                        <span className="text-[10px] text-green-600 font-medium">
-                            • Индексировано
-                        </span>
+                        {indexedSourceIds.has(source.id) ? (
+                          <span className="text-[10px] text-green-600 font-medium">
+                              • Индексировано
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 font-medium">
+                              • Не индексировано
+                          </span>
+                        )}
                         </div>
                     </div>
                   </div>

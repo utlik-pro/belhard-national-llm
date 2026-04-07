@@ -1,7 +1,10 @@
 
 export type Role = 'user' | 'assistant' | 'system';
 
-export type DepartmentId = 'general' | 'accounting' | 'hr' | 'legal' | 'it';
+export type CountryId = 'belarus' | 'azerbaijan';
+
+export type DepartmentId = 'general' | 'accounting' | 'hr' | 'legal' | 'it'
+  | 'labor' | 'family' | 'property' | 'tax';
 
 export interface Source {
   id: string;
@@ -74,6 +77,7 @@ export interface User {
   email: string;
   name: string;
   avatarUrl: string;
+  country: CountryId;
 }
 
 export interface AuthState {

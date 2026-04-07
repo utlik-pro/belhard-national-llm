@@ -9,6 +9,7 @@ interface ChatAreaProps {
   onViewSource: (source: Source, highlightText?: string) => void;
   onEditMessage: (messageId: string, newContent: string) => void;
   onRegenerateMessage: (messageId: string) => void;
+  departments?: typeof DEPARTMENTS;
 }
 
 const ChatArea: React.FC<ChatAreaProps> = ({
@@ -17,10 +18,11 @@ const ChatArea: React.FC<ChatAreaProps> = ({
   onViewSource,
   onEditMessage,
   onRegenerateMessage,
+  departments = DEPARTMENTS,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const currentDept = DEPARTMENTS.find(d => d.id === selectedDepartment);
+  const currentDept = departments.find(d => d.id === selectedDepartment);
   const DepartmentIcon = currentDept?.icon;
 
   // Scroll to bottom when messages change

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import LoginScreen from './components/LoginScreen';
+import LandingPage from './components/LandingPage';
 import DocumentViewer from './components/DocumentViewer';
 import DocumentEditor from './components/DocumentEditor';
 import HelpPage from './components/HelpPage';
@@ -10,14 +11,16 @@ import ChatArea from './components/ChatArea';
 import ChatInput from './components/ChatInput';
 import SettingsModal from './components/SettingsModal';
 import LogoutConfirmModal from './components/LogoutConfirmModal';
-import { Message, ChatSession, AuthState, DepartmentId, Source } from './types';
-import { INITIAL_CHATS, MOCK_SOURCES } from './constants';
+import { Message, ChatSession, AuthState, DepartmentId, CountryId, Source } from './types';
+import { INITIAL_CHATS, MOCK_SOURCES, COUNTRY_CONFIGS } from './constants';
 import { streamResponse } from './services/mockApiService';
 import { streamMultiAgentWithGemini } from './services/langgraph';
 import { indexedDB } from './services/indexedDBService';
 import { migrationService, MigrationProgress } from './services/migrationService';
 import { chunkingService } from './services/chunkingService';
 import { embeddingService } from './services/embeddingService';
+import { userDB } from './services/userDBService';
+import * as api from './services/apiClient';
 
 // Main App Component
 const App: React.FC = () => {
@@ -44,8 +47,13 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
 
-  // Department State
+  // Country & Department State
+  const [selectedCountry, setSelectedCountry] = useState<CountryId>('belarus');
   const [selectedDepartment, setSelectedDepartment] = useState<DepartmentId>('general');
+
+  // Landing / Auth View State
+  const [appView, setAppView] = useState<'landing' | 'login' | 'register' | 'app'>('landing');
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -57,12 +65,45 @@ const App: React.FC = () => {
 
   // Knowledge Base State
   const [sources, setSources] = useState<Source[]>([]);
+  const [indexedSourceIds, setIndexedSourceIds] = useState<Set<string>>(new Set());
 
   // Document Viewer/Editor State
   const [viewingDocument, setViewingDocument] = useState<Source | null>(null);
   const [documentHighlightText, setDocumentHighlightText] = useState<string>('');
   const [editingDocument, setEditingDocument] = useState<Source | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+  // ==================== Session Restoration ====================
+  useEffect(() => {
+    async function restoreSession() {
+      try {
+        await userDB.init();
+        await userDB.seedDemoUsers();
+        const savedUser = await userDB.restoreSession();
+        if (savedUser) {
+          setAuth({
+            isAuthenticated: true,
+            user: {
+              id: savedUser.id,
+              email: savedUser.email,
+              name: savedUser.name,
+              avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(savedUser.name)}`,
+              country: savedUser.country as CountryId,
+            },
+            isLoading: false,
+            error: null,
+          });
+          setSelectedCountry(savedUser.country as CountryId);
+          setAppView('app');
+        }
+      } catch (e) {
+        console.warn('Session restore failed:', e);
+      } finally {
+        setIsRestoringSession(false);
+      }
+    }
+    restoreSession();
+  }, []);
 
   // ==================== Database Initialization ====================
   useEffect(() => {
@@ -173,12 +214,48 @@ const App: React.FC = () => {
           }
         }
 
+        // Import FINANCE_BELHARD_2025 from public data if not exists
+        const hasFinanceDoc = allDocuments.some(d => d.id === 'FINANCE_BELHARD_2025');
+        if (!hasFinanceDoc) {
+          console.log('📥 Importing FINANCE_BELHARD_2025 from public data...');
+          try {
+            const response = await fetch('/data/documents/FINANCE_BELHARD_2025.json');
+            if (response.ok) {
+              const financeDoc = await response.json();
+              await indexedDB.saveDocument(financeDoc);
+              allDocuments = await indexedDB.getAllDocuments();
+              console.log('✅ FINANCE_BELHARD_2025 imported successfully');
+            }
+          } catch (err) {
+            console.warn('⚠️ Failed to import FINANCE_BELHARD_2025:', err);
+          }
+        }
+
+        // Import Azerbaijan documents from public data
+        const azDocIds = ['EMEK_AZ', 'AILE_AZ', 'MULKI_AZ', 'VERGI_AZ', 'MENZIL_AZ', 'TORPAQ_AZ', 'CINAYAT_AZ'];
+        for (const azDocId of azDocIds) {
+          const hasDoc = allDocuments.some(d => d.id === azDocId);
+          if (!hasDoc) {
+            try {
+              const response = await fetch(`/data/documents/${azDocId}.json`);
+              if (response.ok) {
+                const azDoc = await response.json();
+                await indexedDB.saveDocument(azDoc);
+                console.log(`✅ ${azDocId} imported`);
+              }
+            } catch (err) {
+              console.warn(`⚠️ Failed to import ${azDocId}:`, err);
+            }
+          }
+        }
+        allDocuments = await indexedDB.getAllDocuments();
+
         setSources(allDocuments);
         console.log(`✅ Total documents: ${allDocuments.length}`);
 
-        // Generate chunks for structured documents
+        // Load pre-built chunks from static file (generated by scripts/prebuild-chunks.cjs)
         setDbInitProgress({
-          step: 'Генерация chunks документов...',
+          step: 'Загрузка chunks...',
           current: 87,
           total: 100,
           percentage: 87
@@ -187,108 +264,55 @@ const App: React.FC = () => {
         let existingChunks = await indexedDB.getAllChunks();
         console.log(`📊 Existing chunks in IndexedDB: ${existingChunks.length}`);
 
-        // MIGRATION v2.3: Re-chunk legal documents (TK_RB, etc.) with proper article content
-        // Old chunks only had titles, new ones have full article text
-        const legalDocIds = ['TK_RB', 'NK_RB', 'GK_RB', 'UK_RB']; // Main legal codes
-        for (const docId of legalDocIds) {
-          const docChunks = existingChunks.filter(c => c.sourceId === docId);
-          const doc = allDocuments.find(d => d.id === docId);
+        if (existingChunks.length === 0) {
+          try {
+            console.log('📥 Loading pre-built chunks from /data/chunks.json...');
+            const chunksResponse = await fetch('/data/chunks.json');
+            if (chunksResponse.ok) {
+              const prebuiltChunks = await chunksResponse.json();
+              console.log(`📦 Loaded ${prebuiltChunks.length} pre-built chunks, saving to IndexedDB...`);
 
-          // Check if chunks are missing content (only have titles like "Статья 11. Основные права работников")
-          const chunksNeedUpgrade = docChunks.length > 0 && doc?.fullContent &&
-            docChunks.some(c => c.content.length < 200 && c.content.includes('Статья'));
-
-          if (chunksNeedUpgrade) {
-            console.log(`🔄 MIGRATION v2.3: Re-chunking ${docId} with full article content...`);
-            await indexedDB.deleteChunksBySourceId(docId);
-            let newChunks = chunkingService.chunkDocument(doc!);
-            if (embeddingService.isAvailable()) {
-              console.log(`   🧠 Generating embeddings for ${docId}...`);
-              newChunks = await embeddingService.embedChunks(newChunks);
-            }
-            for (const chunk of newChunks) {
-              await indexedDB.saveChunk(chunk);
-            }
-            console.log(`✅ MIGRATION v2.3: Created ${newChunks.length} chunks for ${docId}`);
-            existingChunks = await indexedDB.getAllChunks();
-          }
-        }
-
-        // MIGRATION v2.1: Re-chunk SOTRUDNIKI document with new "пункт N" format
-        const sotrudnikiChunks = existingChunks.filter(c => c.sourceId === 'SOTRUDNIKI_2025');
-        const needsRechunk = sotrudnikiChunks.length > 0 &&
-          sotrudnikiChunks.some(c => c.path.includes('РАЗДЕЛ') || c.path.includes('Статья'));
-
-        if (needsRechunk) {
-          console.log('🔄 MIGRATION: Re-chunking SOTRUDNIKI_2025 with new format...');
-          await indexedDB.deleteChunksBySourceId('SOTRUDNIKI_2025');
-          const sotrudnikiDoc = allDocuments.find(d => d.id === 'SOTRUDNIKI_2025');
-          if (sotrudnikiDoc) {
-            const newChunks = chunkingService.chunkDocument(sotrudnikiDoc);
-            for (const chunk of newChunks) {
-              await indexedDB.saveChunk(chunk);
-            }
-            console.log(`✅ MIGRATION: Created ${newChunks.length} new chunks for SOTRUDNIKI_2025`);
-          }
-          // Reload chunks after migration
-          existingChunks = await indexedDB.getAllChunks();
-        }
-
-        // MIGRATION v2.2: Re-chunk KLIENTY_2025 if missing 5th client (Санта Бремор)
-        const klientyChunks = existingChunks.filter(c => c.sourceId === 'KLIENTY_2025');
-        const klientyDoc = allDocuments.find(d => d.id === 'KLIENTY_2025');
-        const klientyNeedsRechunk = klientyDoc && klientyChunks.length > 0 && klientyChunks.length < 5;
-
-        if (klientyNeedsRechunk) {
-          console.log(`🔄 MIGRATION: Re-chunking KLIENTY_2025 (found ${klientyChunks.length} chunks, expected 5)...`);
-          await indexedDB.deleteChunksBySourceId('KLIENTY_2025');
-          let newChunks = chunkingService.chunkDocument(klientyDoc!);
-          // Generate embeddings
-          if (embeddingService.isAvailable()) {
-            console.log(`   🧠 Generating embeddings for KLIENTY_2025...`);
-            newChunks = await embeddingService.embedChunks(newChunks);
-          }
-          for (const chunk of newChunks) {
-            await indexedDB.saveChunk(chunk);
-          }
-          console.log(`✅ MIGRATION: Created ${newChunks.length} new chunks for KLIENTY_2025`);
-          // Reload chunks after migration
-          existingChunks = await indexedDB.getAllChunks();
-        }
-
-        // Find documents that don't have any chunks
-        const chunkedDocIds = new Set(existingChunks.map(c => c.sourceId));
-        const docsWithoutChunks = allDocuments.filter(doc => !chunkedDocIds.has(doc.id));
-
-        if (docsWithoutChunks.length > 0) {
-          console.log(`🔄 Generating chunks for ${docsWithoutChunks.length} documents without chunks...`);
-
-          let totalChunks = 0;
-          for (const doc of docsWithoutChunks) {
-            let chunks = chunkingService.chunkDocument(doc);
-
-            if (chunks.length > 0) {
-              // Generate embeddings for semantic search
-              if (embeddingService.isAvailable()) {
-                console.log(`   🧠 Generating embeddings for ${doc.citation}...`);
-                chunks = await embeddingService.embedChunks(chunks);
+              // Batch save in single transaction
+              const batchSize = 500;
+              for (let i = 0; i < prebuiltChunks.length; i += batchSize) {
+                const batch = prebuiltChunks.slice(i, i + batchSize);
+                for (const chunk of batch) {
+                  await indexedDB.saveChunk(chunk);
+                }
+                const pct = 87 + Math.round(((i + batchSize) / prebuiltChunks.length) * 5);
+                setDbInitProgress({
+                  step: `Загрузка chunks (${Math.min(i + batchSize, prebuiltChunks.length)}/${prebuiltChunks.length})...`,
+                  current: Math.min(i + batchSize, prebuiltChunks.length),
+                  total: prebuiltChunks.length,
+                  percentage: Math.min(pct, 92)
+                });
               }
-              for (const chunk of chunks) {
-                await indexedDB.saveChunk(chunk);
-              }
-              totalChunks += chunks.length;
-              console.log(`   ✅ ${doc.citation}: ${chunks.length} chunks`);
+              existingChunks = prebuiltChunks;
+              console.log(`✅ Loaded ${prebuiltChunks.length} pre-built chunks`);
             } else {
-              console.warn(`   ⚠️ ${doc.citation}: no chunks created (check document structure)`);
+              console.warn('⚠️ Pre-built chunks not found, falling back to runtime chunking...');
+              // Fallback: chunk at runtime for documents without chunks
+              for (const doc of allDocuments) {
+                const chunks = chunkingService.chunkDocument(doc);
+                for (const chunk of chunks) {
+                  await indexedDB.saveChunk(chunk);
+                }
+              }
+              existingChunks = await indexedDB.getAllChunks();
             }
+          } catch (err) {
+            console.warn('⚠️ Failed to load pre-built chunks:', err);
           }
-
-          console.log(`✅ Generated ${totalChunks} total chunks for ${docsWithoutChunks.length} documents`);
         } else {
-          console.log(`✅ All ${allDocuments.length} documents have chunks`);
+          console.log(`✅ Using ${existingChunks.length} cached chunks from IndexedDB`);
         }
 
-        // Load chats from IndexedDB
+        // Update indexed source IDs for UI
+        const finalChunkedIds = new Set(existingChunks.map((c: any) => c.sourceId));
+        setIndexedSourceIds(finalChunkedIds);
+        console.log(`📊 Indexed documents: ${finalChunkedIds.size}`);
+
+        // Load chats from server
         setDbInitProgress({
           step: 'Загрузка истории чатов...',
           current: 90,
@@ -296,9 +320,26 @@ const App: React.FC = () => {
           percentage: 90
         });
 
-        const allChats = await indexedDB.getAllChats();
-        setChatHistory(allChats.length > 0 ? allChats : INITIAL_CHATS);
-        console.log(`✅ Loaded ${allChats.length} chats from IndexedDB`);
+        try {
+          const serverChats = await api.fetchChats();
+          setChatHistory(serverChats.length > 0 ? serverChats : INITIAL_CHATS);
+          console.log(`✅ Loaded ${serverChats.length} chats from server`);
+        } catch {
+          // Fallback: IndexedDB chats
+          const allChats = await indexedDB.getAllChats();
+          setChatHistory(allChats.length > 0 ? allChats : INITIAL_CHATS);
+        }
+
+        // Load documents from server
+        try {
+          const serverDocs = await api.fetchDocuments();
+          if (serverDocs.length > 0) {
+            setSources(serverDocs);
+            console.log(`✅ Loaded ${serverDocs.length} documents from server`);
+          }
+        } catch {
+          console.warn('⚠️ Server docs failed, using local');
+        }
 
         // Finalize
         setDbInitProgress({
@@ -316,92 +357,22 @@ const App: React.FC = () => {
       } catch (error) {
         console.error('❌ Failed to initialize database:', error);
 
-        // Fallback to localStorage/MOCK_SOURCES on error
-        console.warn('⚠️ Falling back to localStorage...');
-
-        try {
-          const lsSources = localStorage.getItem('belhard_sources');
-          const lsChats = localStorage.getItem('belhard_chats');
-
-          setSources(lsSources ? JSON.parse(lsSources) : MOCK_SOURCES);
-          setChatHistory(lsChats ? JSON.parse(lsChats) : INITIAL_CHATS);
-        } catch (e) {
-          setSources(MOCK_SOURCES);
-          setChatHistory(INITIAL_CHATS);
-        }
-
+        setSources(MOCK_SOURCES);
+        setChatHistory(INITIAL_CHATS);
         setIsDBReady(true);
       }
     }
 
-    initializeDatabase();
-  }, []);
+    if (auth.isAuthenticated) {
+      initializeDatabase();
+    }
+  }, [auth.isAuthenticated]);
 
   // ==================== Persistence Effects ====================
-  useEffect(() => {
-    if (!isDBReady || chatHistory.length === 0) return;
+  // Chats are now saved server-side via /api/chats — no local sync needed
 
-    async function saveChats() {
-      try {
-        for (const chat of chatHistory) {
-          const chatToSave = {
-            ...chat,
-            messages: chat.messages?.map(msg => ({
-              ...msg,
-              sources: msg.sources?.map(s => ({
-                id: s.id,
-                title: s.title,
-                type: s.type,
-                citation: s.citation,
-                url: s.url,
-                preview: s.preview
-              }))
-            }))
-          };
-          await indexedDB.saveChat(chatToSave as ChatSession);
-        }
-        console.log(`💾 Saved ${chatHistory.length} chats to IndexedDB`);
-      } catch (e) {
-        console.error('Failed to save chats to IndexedDB:', e);
-      }
-    }
-
-    saveChats();
-  }, [chatHistory, isDBReady]);
-
-  useEffect(() => {
-    if (!isDBReady || sources.length === 0) return;
-
-    async function saveSources() {
-      try {
-        // Get existing chunks to know which documents already have them
-        const existingChunks = await indexedDB.getAllChunks();
-        const chunkedDocIds = new Set(existingChunks.map(c => c.sourceId));
-
-        for (const source of sources) {
-          // Save document to IndexedDB
-          await indexedDB.saveDocument(source);
-
-          // Create chunks for documents that don't have them yet (for RAG search)
-          if (!chunkedDocIds.has(source.id)) {
-            console.log(`📦 Creating chunks for new document: ${source.citation}`);
-            const chunks = chunkingService.chunkDocument(source);
-
-            if (chunks.length > 0) {
-              await indexedDB.saveChunks(chunks);
-              console.log(`✅ Created ${chunks.length} chunks for ${source.citation}`);
-            } else {
-              console.warn(`⚠️ No chunks created for ${source.citation} - check document structure`);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Failed to save sources to IndexedDB:', e);
-      }
-    }
-
-    saveSources();
-  }, [sources, isDBReady]);
+  // Save messages to current chat state (for display)
+  // Server saves messages automatically during LLM streaming
 
   // Save messages to current chat
   useEffect(() => {
@@ -434,29 +405,45 @@ const App: React.FC = () => {
   }, [currentChatId]);
 
   // ==================== Auth Handlers ====================
-  const handleLogin = (email: string) => {
+  const handleLogin = async (email: string, country: CountryId = 'belarus') => {
+    const countryConfig = COUNTRY_CONFIGS[country];
+    setSelectedCountry(country);
+
+    // Fetch user info from DB
+    let userName = email.split('@')[0];
+    try {
+      const dbUser = await userDB.findByEmail(email);
+      if (dbUser) userName = dbUser.name;
+    } catch { /* use fallback name */ }
+
     setAuth({
       isAuthenticated: true,
       user: {
         id: 'u1',
         email,
-        name: 'Алексей Петров',
-        avatarUrl: 'https://picsum.photos/200'
+        name: userName,
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userName)}`,
+        country,
       },
       isLoading: false,
       error: null
     });
 
-    if (chatHistory.length > 0) {
-      const firstNonArchived = chatHistory.find(c => !c.archived) || chatHistory[0];
-      setCurrentChatId(firstNonArchived.id);
-      setSelectedDepartment(firstNonArchived.department || 'general');
-      setMessages(firstNonArchived.messages || []);
-    }
+    // Set default department for the selected country
+    const defaultDept = countryConfig.departments[0].id;
+    setSelectedDepartment(defaultDept);
+
+    // Start with a fresh chat for the selected country
+    setCurrentChatId(null);
+    setMessages([]);
+    setChatHistory(countryConfig.initialChats);
+    setAppView('app');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await userDB.logout();
     setAuth({ isAuthenticated: false, user: null, isLoading: false, error: null });
+    setAppView('landing');
   };
 
   // ==================== AI Response Generation ====================
@@ -535,32 +522,51 @@ const App: React.FC = () => {
         setIsGenerating(false);
 
       } else {
-        // Original streaming mode
-        await streamResponse(
-          history,
+        // Server-side RAG + LLM streaming via /api/llm/stream
+        let accumulatedText = '';
+        await api.streamLLMResponse(
+          currentChatId,
+          history[history.length - 1].content,
           selectedDepartment,
-          sources,
-          (chunk) => {
-            setMessages(prev => prev.map(m =>
-              m.id === aiMsgId ? { ...m, content: m.content + chunk } : m
-            ));
+          selectedCountry,
+          history.slice(0, -1),
+          {
+            onStatus: (status) => {
+              setMessages(prev => prev.map(m =>
+                m.id === aiMsgId ? { ...m, generationStatus: status as any } : m
+              ));
+            },
+            onChunk: (chunk) => {
+              accumulatedText += chunk;
+              setMessages(prev => prev.map(m =>
+                m.id === aiMsgId ? { ...m, content: accumulatedText } : m
+              ));
+            },
+            onComplete: (citedSources) => {
+              const relevantSources = citedSources.map((s: any) => sources.find(src => src.id === s.id) || s);
+              setMessages(prev => prev.map(m =>
+                m.id === aiMsgId ? {
+                  ...m,
+                  isStreaming: false,
+                  sources: relevantSources,
+                  generationStatus: undefined,
+                } : m
+              ));
+              setIsGenerating(false);
+            },
+            onError: (error) => {
+              console.error('LLM stream error:', error);
+              setMessages(prev => prev.map(m =>
+                m.id === aiMsgId ? {
+                  ...m,
+                  isStreaming: false,
+                  content: accumulatedText + `\n\n[Ошибка: ${error}]`,
+                  generationStatus: undefined,
+                } : m
+              ));
+              setIsGenerating(false);
+            },
           },
-          (relevantSources) => {
-            setMessages(prev => prev.map(m =>
-              m.id === aiMsgId ? {
-                ...m,
-                isStreaming: false,
-                sources: relevantSources,
-                generationStatus: undefined
-              } : m
-            ));
-            setIsGenerating(false);
-          },
-          (status) => {
-            setMessages(prev => prev.map(m =>
-              m.id === aiMsgId ? { ...m, generationStatus: status } : m
-            ));
-          }
         );
       }
     } catch (err) {
@@ -635,17 +641,20 @@ const App: React.FC = () => {
   };
 
   // ==================== Chat Management ====================
-  const handleNewChat = () => {
-    const newChat: ChatSession = {
-      id: Date.now().toString(),
-      title: 'Новый диалог',
-      preview: 'Выберите отдел и задайте вопрос...',
-      lastUpdated: Date.now(),
-      department: selectedDepartment
-    };
-    setChatHistory(prev => [newChat, ...prev]);
-    setCurrentChatId(newChat.id);
-    setMessages([]);
+  const handleNewChat = async () => {
+    try {
+      const newChat = await api.createChat('Новый диалог', selectedDepartment, selectedCountry);
+      setChatHistory(prev => [newChat, ...prev]);
+      setCurrentChatId(newChat.id);
+      setMessages([]);
+    } catch (e) {
+      console.error('Failed to create chat:', e);
+      // Fallback: local-only chat
+      const newChat: ChatSession = { id: Date.now().toString(), title: 'Новый диалог', preview: '', lastUpdated: Date.now(), department: selectedDepartment };
+      setChatHistory(prev => [newChat, ...prev]);
+      setCurrentChatId(newChat.id);
+      setMessages([]);
+    }
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
@@ -665,7 +674,7 @@ const App: React.FC = () => {
       return newChats;
     });
 
-    indexedDB.deleteChat(id).catch(e => console.error('Failed to delete chat:', e));
+    api.deleteChat(id).catch(e => console.error('Failed to delete chat:', e));
   };
 
   const handleArchiveChat = (id: string) => {
@@ -729,8 +738,16 @@ const App: React.FC = () => {
         }
         await indexedDB.saveChunks(chunks);
         console.log(`✅ Recreated ${chunks.length} chunks for ${source.citation}`);
+        // Update indexed status
+        setIndexedSourceIds(prev => new Set([...prev, source.id]));
       } else {
         console.warn(`⚠️ No chunks created for ${source.citation} - document may be too short`);
+        // Remove from indexed if no chunks
+        setIndexedSourceIds(prev => {
+          const next = new Set(prev);
+          next.delete(source.id);
+          return next;
+        });
       }
 
       setSources(prev => prev.map(s => s.id === source.id ? source : s));
@@ -751,8 +768,16 @@ const App: React.FC = () => {
         }
         await indexedDB.saveChunks(chunks);
         console.log(`✅ Created ${chunks.length} chunks with embeddings for new document ${source.citation}`);
+        // Update indexed status
+        setIndexedSourceIds(prev => new Set([...prev, source.id]));
       } else {
         console.warn(`⚠️ No chunks created for ${source.citation} - document may be too short or have unsupported structure`);
+        // Mark as not indexed
+        setIndexedSourceIds(prev => {
+          const next = new Set(prev);
+          next.delete(source.id);
+          return next;
+        });
       }
 
       setSources(prev => [source, ...prev]);
@@ -762,6 +787,12 @@ const App: React.FC = () => {
   const handleDeleteSource = (id: string) => {
     if (window.confirm('Вы уверены, что хотите удалить этот документ из базы знаний?')) {
       setSources(prev => prev.filter(s => s.id !== id));
+      // Remove from indexed status
+      setIndexedSourceIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       indexedDB.deleteDocument(id).catch(e => console.error('Failed to delete document:', e));
     }
   };
@@ -778,26 +809,53 @@ const App: React.FC = () => {
     setDocumentHighlightText('');
   };
 
-  const handleSelectChat = (id: string) => {
+  const handleSelectChat = async (id: string) => {
     const chat = chatHistory.find(c => c.id === id);
     if (chat) {
       setCurrentChatId(id);
       setSelectedDepartment(chat.department || 'general');
-      setMessages(chat.messages || []);
+      // Load messages from server
+      try {
+        const msgs = await api.fetchChatMessages(id);
+        setMessages(msgs);
+      } catch {
+        setMessages(chat.messages || []);
+      }
     }
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
   // ==================== Render ====================
 
+  // Session restoration in progress
+  if (isRestoringSession) {
+    return <AppLoadingScreen progress={{ step: 'Восстановление сессии...', current: 0, total: 100, percentage: 0 }} />;
+  }
+
   // Loading screen
-  if (!isDBReady) {
+  if (auth.isAuthenticated && !isDBReady) {
     return <AppLoadingScreen progress={dbInitProgress} />;
   }
 
-  // Login screen
+  // Landing page
+  if (!auth.isAuthenticated && appView === 'landing') {
+    return (
+      <LandingPage
+        onGoToLogin={() => setAppView('login')}
+        onGoToRegister={() => setAppView('register')}
+      />
+    );
+  }
+
+  // Login/Register screen
   if (!auth.isAuthenticated) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        initialMode={appView === 'register' ? 'register' : 'login'}
+        onBackToLanding={() => setAppView('landing')}
+      />
+    );
   }
 
   // Help page
@@ -840,7 +898,11 @@ const App: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
         history={chatHistory}
         activeChatId={currentChatId}
-        sources={sources}
+        sources={selectedCountry === 'azerbaijan'
+          ? sources.filter(s => (s as any).country === 'azerbaijan')
+          : sources.filter(s => !(s as any).country || (s as any).country === 'belarus')
+        }
+        indexedSourceIds={indexedSourceIds}
         onSelectChat={handleSelectChat}
         onNewChat={handleNewChat}
         onLogout={handleLogout}
@@ -851,6 +913,8 @@ const App: React.FC = () => {
         onDeleteChat={handleDeleteChat}
         onArchiveChat={handleArchiveChat}
         onRenameChat={handleRenameChat}
+        brandName={COUNTRY_CONFIGS[selectedCountry].brandName}
+        selectedCountry={selectedCountry}
       />
 
       {/* Main Content */}
@@ -864,6 +928,7 @@ const App: React.FC = () => {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenHelp={() => setShowHelpPage(true)}
           onLogoutRequest={() => setShowLogoutConfirm(true)}
+          departments={COUNTRY_CONFIGS[selectedCountry].departments}
         />
 
         {/* Chat Area */}
@@ -873,6 +938,7 @@ const App: React.FC = () => {
           onViewSource={handleViewSource}
           onEditMessage={handleEditMessage}
           onRegenerateMessage={handleRegenerateMessage}
+          departments={COUNTRY_CONFIGS[selectedCountry].departments}
         />
 
         {/* Chat Input */}
@@ -883,6 +949,7 @@ const App: React.FC = () => {
           onAddSource={handleOpenAddSource}
           isGenerating={isGenerating}
           selectedDepartment={selectedDepartment}
+          departments={COUNTRY_CONFIGS[selectedCountry].departments}
         />
 
       </div>

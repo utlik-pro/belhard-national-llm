@@ -18,6 +18,7 @@ const MAX_TEXT_LENGTH = 8000;
 
 class EmbeddingService {
   private apiKey: string | null = null;
+  private rateLimited: boolean = false;
 
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY || null;
@@ -32,7 +33,7 @@ class EmbeddingService {
    * Проверка доступности сервиса
    */
   isAvailable(): boolean {
-    return !!this.apiKey;
+    return !!this.apiKey && !this.rateLimited;
   }
 
   /**
@@ -98,41 +99,54 @@ class EmbeddingService {
       const batch = texts.slice(i, i + MAX_BATCH_SIZE);
       const batchIndices = batch.map((_, idx) => i + idx);
 
-      try {
-        // Обрезаем тексты
-        const truncatedBatch = batch.map(text =>
-          text.length > MAX_TEXT_LENGTH ? text.substring(0, MAX_TEXT_LENGTH) : text
-        );
+      const truncatedBatch = batch.map(text =>
+        text.length > MAX_TEXT_LENGTH ? text.substring(0, MAX_TEXT_LENGTH) : text
+      );
 
-        const response = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: truncatedBatch,
-            dimensions: EMBEDDING_DIMENSIONS
-          })
-        });
+      const MAX_RETRIES = 3;
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          const response = await fetch('https://api.openai.com/v1/embeddings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({
+              model: 'text-embedding-3-small',
+              input: truncatedBatch,
+              dimensions: EMBEDDING_DIMENSIONS
+            })
+          });
 
-        if (!response.ok) {
-          const error = await response.json();
-          console.error('OpenAI Embedding API batch error:', error);
-          continue;
+          if (!response.ok) {
+            const error = await response.json();
+            console.error('OpenAI Embedding API batch error:', error);
+            if (response.status === 429) {
+              console.warn('⚠️ EmbeddingService: Rate limited, disabling embeddings for this session');
+              this.rateLimited = true;
+              return results;
+            }
+            break;
+          }
+
+          const data = await response.json();
+
+          data.data.forEach((item: { embedding: number[]; index: number }) => {
+            results[batchIndices[item.index]] = item.embedding;
+          });
+
+          console.log(`📊 Generated embeddings for batch ${Math.floor(i / MAX_BATCH_SIZE) + 1}/${Math.ceil(texts.length / MAX_BATCH_SIZE)}`);
+          break;
+        } catch (error) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`⚠️ Batch ${Math.floor(i / MAX_BATCH_SIZE) + 1} failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${delay / 1000}s...`, error);
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            console.error(`❌ Failed to generate embeddings for batch starting at ${i} after ${MAX_RETRIES} attempts`);
+          }
         }
-
-        const data = await response.json();
-
-        // Сохраняем результаты в правильные позиции
-        data.data.forEach((item: { embedding: number[]; index: number }) => {
-          results[batchIndices[item.index]] = item.embedding;
-        });
-
-        console.log(`📊 Generated embeddings for batch ${Math.floor(i / MAX_BATCH_SIZE) + 1}/${Math.ceil(texts.length / MAX_BATCH_SIZE)}`);
-      } catch (error) {
-        console.error(`Failed to generate embeddings for batch starting at ${i}:`, error);
       }
     }
 

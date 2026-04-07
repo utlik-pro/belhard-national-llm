@@ -73,9 +73,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onViewSource, onEdit
     // Supports: "ТК РБ - РАЗДЕЛ II. ГЛАВА 2 - Статья 16", "ТК РБ - пункт 8", "Пост. №40 - п.20"
     const escapedCitation = source.citation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const citationPattern = new RegExp(escapedCitation + '\\s*-\\s*(?:' +
-      '.{0,150}?(?:Стать[яи]|ст\\.?)\\s*\\d+(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
-      '|(?:пункт|п\\.)\\s*\\d+(?:\\.\\d+)?' +
-      '|(?:раздел|р\\.)\\s*\\d+(?:\\.\\d+)?' +
+      '.{0,150}?(?:Стать[яи]|ст\\.?|Maddə)\\s*\\d+(?:-\\d+)?(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
+      '|(?:пункт|п\\.|bənd)\\s*\\d+(?:\\.\\d+)?' +
+      '|(?:раздел|р\\.|bölmə|BÖLMƏ)\\s*[IVX\\d]+(?:\\.\\d+)?' +
+      '|(?:fəsil|FƏSİL)\\s*\\d+(?:\\.\\d+)?' +
       '|[^,\\.\\n]{1,50})', 'gi');
 
     // Remove markdown formatting and ALL citations from all sources
@@ -90,9 +91,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onViewSource, onEdit
           const escaped = src.citation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           // Match all citation formats: Статья, пункт, раздел, etc.
           const pattern = new RegExp(escaped + '\\s*-\\s*(?:' +
-            '.{0,150}?(?:Стать[яи]|ст\\.?)\\s*\\d+(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
-            '|(?:пункт|п\\.)\\s*\\d+(?:\\.\\d+)?' +
-            '|(?:раздел|р\\.)\\s*\\d+(?:\\.\\d+)?' +
+            '.{0,150}?(?:Стать[яи]|ст\\.?|Maddə)\\s*\\d+(?:-\\d+)?(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
+            '|(?:пункт|п\\.|bənd)\\s*\\d+(?:\\.\\d+)?' +
+            '|(?:раздел|р\\.|bölmə|BÖLMƏ)\\s*[IVX\\d]+(?:\\.\\d+)?' +
+            '|(?:fəsil|FƏSİL)\\s*\\d+(?:\\.\\d+)?' +
             '|[^,\\.\\n]{1,50})', 'gi');
           cleanText = cleanText.replace(pattern, '');
         }
@@ -264,16 +266,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onViewSource, onEdit
         // - "Пост. №40 - п.20" (abbreviated)
         // - "Декрет №8 - раздел 3" (section)
         return escaped + '\\s*-\\s*(?:' +
-          // Option 1: Full path with Статья
-          '.{0,150}?(?:Стать[яи]|ст\\.?)\\s*\\d+(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
+          // Option 1: Full path with Статья / Maddə
+          '.{0,150}?(?:Стать[яи]|ст\\.?|Maddə)\\s*\\d+(?:-\\d+)?(?:\\s*п\\.?\\d+(?:\\.\\d+)?)?' +
           '|' +
-          // Option 2: пункт/п. N format
-          '(?:пункт|п\\.)\\s*\\d+(?:\\.\\d+)?' +
+          // Option 2: пункт/п. N / bənd format
+          '(?:пункт|п\\.|bənd)\\s*\\d+(?:\\.\\d+)?' +
           '|' +
-          // Option 3: раздел N format
-          '(?:раздел|р\\.)\\s*\\d+(?:\\.\\d+)?' +
+          // Option 3: раздел / bölmə N format
+          '(?:раздел|р\\.|bölmə|BÖLMƏ)\\s*[IVX\\d]+(?:\\.\\d+)?' +
           '|' +
-          // Option 4: Generic short reference (up to 50 chars, no comma/period/newline)
+          // Option 4: fəsil (chapter) format
+          '(?:fəsil|FƏSİL)\\s*\\d+(?:\\.\\d+)?' +
+          '|' +
+          // Option 5: Generic short reference (up to 50 chars, no comma/period/newline)
           '[^,\\.\\n]{1,50}' +
           ')';
       }
@@ -410,15 +415,15 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onViewSource, onEdit
         }
       } else {
         // Check for orphaned article references
-        const orphanPattern = /([,–\s]*(?:ГЛАВА\s*\d+\s*-\s*)?Стать[яи]\s*\d+(?:\s*п\.?\d+(?:\.\d+)?)?)/gi;
+        const orphanPattern = /([,–\s]*(?:(?:ГЛАВА|FƏSİL)\s*\d+\s*-\s*)?(?:Стать[яи]|Maddə)\s*\d+(?:-\d+)?(?:\s*п\.?\d+(?:\.\d+)?)?)/gi;
         if (lastSource && orphanPattern.test(part)) {
           orphanPattern.lastIndex = 0;
           const orphanParts = part.split(orphanPattern);
           orphanParts.forEach((orphanPart, orphanIdx) => {
             if (!orphanPart) return;
-            if (orphanPattern.test(orphanPart) && orphanPart.match(/Стать[яи]\s*\d+/i)) {
+            if (orphanPattern.test(orphanPart) && orphanPart.match(/(?:Стать[яи]|Maddə)\s*\d+/i)) {
               orphanPattern.lastIndex = 0;
-              const articleMatch = orphanPart.match(/(?:ГЛАВА\s*(\d+)\s*-\s*)?Стать[яи]\s*(\d+)(?:\s*п\.?(\d+(?:\.\d+)?)?)?/i);
+              const articleMatch = orphanPart.match(/(?:(?:ГЛАВА|FƏSİL)\s*(\d+)\s*-\s*)?(?:Стать[яи]|Maddə)\s*(\d+(?:-\d+)?)(?:\s*п\.?(\d+(?:\.\d+)?)?)?/i);
               if (articleMatch) {
                 const chapter = articleMatch[1] ? `ГЛАВА ${articleMatch[1]} - ` : '';
                 const articleNum = articleMatch[2];

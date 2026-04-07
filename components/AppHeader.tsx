@@ -10,6 +10,7 @@ interface AppHeaderProps {
   onOpenSettings: () => void;
   onOpenHelp: () => void;
   onLogoutRequest: () => void;
+  departments?: typeof DEPARTMENTS;
 }
 
 const AppHeader: React.FC<AppHeaderProps> = ({
@@ -19,11 +20,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenSettings,
   onOpenHelp,
   onLogoutRequest,
+  departments = DEPARTMENTS,
 }) => {
   const [isDeptMenuOpen, setIsDeptMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  const currentDept = DEPARTMENTS.find(d => d.id === selectedDepartment);
+  const currentDept = departments.find(d => d.id === selectedDepartment);
   const DepartmentIcon = currentDept?.icon;
 
   return (
@@ -61,7 +63,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               />
               <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden animate-slide-up z-50">
                 <div className="p-1">
-                  {DEPARTMENTS.map(dept => (
+                  {departments.map(dept => (
                     <button
                       key={dept.id}
                       onClick={() => {

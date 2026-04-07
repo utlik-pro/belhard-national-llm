@@ -32,8 +32,17 @@ class ChunkingService {
                            doc.title?.toLowerCase().includes('сотрудник');
       const isClientDoc = doc.citation?.toLowerCase().includes('клиент') ||
                          doc.title?.toLowerCase().includes('клиент');
+      const isFinanceDoc = doc.citation?.toLowerCase().includes('финанс') ||
+                          doc.title?.toLowerCase().includes('финанс') ||
+                          doc.title?.toLowerCase().includes('отчёт') ||
+                          doc.title?.toLowerCase().includes('отчет');
       const isSimpleList = doc.sections.length === 1 && doc.sections[0].chapters?.length === 1;
       const useSimplePath = isEmployeeDoc || isClientDoc || isSimpleList;
+      // Для финансовых документов используем "пункт" вместо "статья"
+      const usePunktFormat = isEmployeeDoc || isClientDoc || isFinanceDoc;
+
+      // Detect if this is an Azerbaijan document
+      const isAzDoc = (doc as any).country === 'azerbaijan';
 
       doc.sections.forEach(section => {
         section.chapters?.forEach(chapter => {
@@ -45,14 +54,21 @@ class ChunkingService {
             let path: string;
             if (useSimplePath) {
               path = `пункт ${article.number}`;
+            } else if (usePunktFormat) {
+              // Для финансовых документов: упрощённый путь с "пункт"
+              path = `${chapter.title} - пункт ${article.number}`;
+            } else if (isAzDoc) {
+              path = `BÖLMƏ ${section.number}. ${section.title} → Fəsil ${chapter.number}. ${chapter.title} → Maddə ${article.number}`;
             } else {
               path = `РАЗДЕЛ ${section.number}. ${section.title} → ГЛАВА ${chapter.number}. ${chapter.title} → Статья ${article.number}`;
             }
 
-            // Для документов сотрудников/клиентов используем формат "Пункт N" вместо "Статья N"
+            // Для документов сотрудников/клиентов/финансов используем формат "Пункт N" вместо "Статья N"
             let content: string;
-            if (useSimplePath) {
+            if (useSimplePath || usePunktFormat) {
               content = `Пункт ${article.number}. ${article.title}`;
+            } else if (isAzDoc) {
+              content = `Maddə ${article.number}. ${article.title}`;
             } else {
               content = `Статья ${article.number}. ${article.title}`;
             }
@@ -247,8 +263,44 @@ class ChunkingService {
           });
           console.log(`📝 ${doc.citation}: создан 1 chunk (полный текст, ${content.trim().length} символов)`);
         } else {
-          console.warn(`⚠️ ${doc.citation}: пустой контент, chunks не созданы`);
+          console.warn(`⚠️ ${doc.citation}: пустой контент в fallback ветке`);
         }
+      }
+    }
+
+    // ГАРАНТИРОВАННЫЙ FALLBACK: если chunks всё ещё пустой, создаём хотя бы один chunk
+    // из любого доступного контента (title + preview + fullContent)
+    if (chunks.length === 0) {
+      const fallbackContent = [
+        doc.title,
+        doc.preview || '',
+        doc.fullContent || ''
+      ].filter(Boolean).join('\n\n').trim();
+
+      if (fallbackContent.length > 10) {
+        // Разбиваем длинный контент на части по 3000 символов
+        const maxChunkSize = 3000;
+        const contentParts = [];
+
+        for (let i = 0; i < fallbackContent.length; i += maxChunkSize) {
+          contentParts.push(fallbackContent.substring(i, i + maxChunkSize));
+        }
+
+        contentParts.forEach((part, idx) => {
+          chunks.push({
+            id: `${doc.id}_fallback_${idx}`,
+            sourceId: doc.id,
+            sourceTitle: doc.title,
+            citation: doc.citation,
+            path: contentParts.length > 1 ? `часть ${idx + 1}` : 'полный текст',
+            content: part,
+            chunkType: 'article'
+          });
+        });
+
+        console.log(`📝 ${doc.citation}: FALLBACK - создано ${chunks.length} chunk(s) из доступного контента (${fallbackContent.length} символов)`);
+      } else {
+        console.error(`❌ ${doc.citation}: невозможно создать chunks - нет контента (title: ${doc.title?.length || 0}, preview: ${doc.preview?.length || 0}, fullContent: ${doc.fullContent?.length || 0})`);
       }
     }
 

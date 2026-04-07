@@ -22,3 +22,28 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Auto Claude data directory
+.auto-claude/
+
+# Server database
+server/db/*.db
+server/db/*.db-wal
+server/db/*.db-shm
+server/dist/
+
+# Environment files with secrets
+.env
+.env.local
+
+# Pre-built data (generated)
+public/data/chunks.json
+
+# Playwright screenshots
+.playwright-mcp/
+.worktrees/
+case-study/
+.claude_settings.json
+
+# Large generated files
+public/data/chunks.json
