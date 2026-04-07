@@ -522,51 +522,77 @@ const App: React.FC = () => {
         setIsGenerating(false);
 
       } else {
-        // Server-side RAG + LLM streaming via /api/llm/stream
-        let accumulatedText = '';
-        await api.streamLLMResponse(
-          currentChatId,
-          history[history.length - 1].content,
+        // Try server-side streaming, fallback to direct client-side LLM
+        let usedServer = false;
+        try {
+          let accumulatedText = '';
+          await api.streamLLMResponse(
+            currentChatId,
+            history[history.length - 1].content,
+            selectedDepartment,
+            selectedCountry,
+            history.slice(0, -1),
+            {
+              onStatus: (status) => {
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMsgId ? { ...m, generationStatus: status as any } : m
+                ));
+              },
+              onChunk: (chunk) => {
+                usedServer = true;
+                accumulatedText += chunk;
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMsgId ? { ...m, content: accumulatedText } : m
+                ));
+              },
+              onComplete: (citedSources) => {
+                const relevantSources = citedSources.map((s: any) => sources.find(src => src.id === s.id) || s);
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMsgId ? { ...m, isStreaming: false, sources: relevantSources, generationStatus: undefined } : m
+                ));
+                setIsGenerating(false);
+              },
+              onError: (error) => {
+                if (!usedServer) throw new Error(error); // No data received — trigger fallback
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMsgId ? { ...m, isStreaming: false, content: accumulatedText + `\n\n[Ошибка: ${error}]`, generationStatus: undefined } : m
+                ));
+                setIsGenerating(false);
+              },
+            },
+          );
+          if (usedServer) return; // Server handled it successfully
+        } catch (serverErr) {
+          console.warn('Server LLM unavailable, falling back to direct API:', serverErr);
+        }
+
+        // Fallback: direct client-side Gemini/OpenAI (old path)
+        const countrySources = selectedCountry === 'azerbaijan'
+          ? sources.filter(s => (s as any).country === 'azerbaijan')
+          : sources.filter(s => !(s as any).country || (s as any).country === 'belarus');
+
+        await streamResponse(
+          history,
           selectedDepartment,
-          selectedCountry,
-          history.slice(0, -1),
-          {
-            onStatus: (status) => {
-              setMessages(prev => prev.map(m =>
-                m.id === aiMsgId ? { ...m, generationStatus: status as any } : m
-              ));
-            },
-            onChunk: (chunk) => {
-              accumulatedText += chunk;
-              setMessages(prev => prev.map(m =>
-                m.id === aiMsgId ? { ...m, content: accumulatedText } : m
-              ));
-            },
-            onComplete: (citedSources) => {
-              const relevantSources = citedSources.map((s: any) => sources.find(src => src.id === s.id) || s);
-              setMessages(prev => prev.map(m =>
-                m.id === aiMsgId ? {
-                  ...m,
-                  isStreaming: false,
-                  sources: relevantSources,
-                  generationStatus: undefined,
-                } : m
-              ));
-              setIsGenerating(false);
-            },
-            onError: (error) => {
-              console.error('LLM stream error:', error);
-              setMessages(prev => prev.map(m =>
-                m.id === aiMsgId ? {
-                  ...m,
-                  isStreaming: false,
-                  content: accumulatedText + `\n\n[Ошибка: ${error}]`,
-                  generationStatus: undefined,
-                } : m
-              ));
-              setIsGenerating(false);
-            },
+          countrySources,
+          (chunk) => {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, content: m.content + chunk } : m
+            ));
           },
+          (relevantSources) => {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, isStreaming: false, sources: relevantSources, generationStatus: undefined } : m
+            ));
+            setIsGenerating(false);
+          },
+          (status) => {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, generationStatus: status } : m
+            ));
+          },
+          COUNTRY_CONFIGS[selectedCountry].departments,
+          selectedCountry,
         );
       }
     } catch (err) {
