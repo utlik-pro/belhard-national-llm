@@ -1,28 +1,25 @@
 /**
- * API Client — centralized server communication
+ * API Client — server communication with timeout fallback
  */
 
 import { ChatSession, Message, Source, DepartmentId, CountryId } from '../types';
 
-// Backend URL: env var in production (Render), proxy in dev
 const API_BASE = (import.meta as any).env?.VITE_API_URL || '';
 
-function url(path: string): string {
-  return `${API_BASE}${path}`;
-}
+function apiUrl(path: string): string { return `${API_BASE}${path}`; }
 
-function headers(): Record<string, string> {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('belhard_access_token');
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
 }
 
-async function safeFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function api(path: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(url(path), { ...options, signal: controller.signal });
+    const res = await fetch(apiUrl(path), { ...options, headers: { ...authHeaders(), ...(options.headers || {}) }, signal: controller.signal });
     clearTimeout(timeout);
     return res;
   } catch {
@@ -34,7 +31,7 @@ async function safeFetch(path: string, options: RequestInit = {}): Promise<Respo
 // ==================== CHATS ====================
 
 export async function fetchChats(): Promise<ChatSession[]> {
-  const res = await safeFetch('/api/chats', { headers: headers() });
+  const res = await api('/api/chats');
   if (!res.ok) return [];
   const data = await res.json();
   return data.map((c: any) => ({
@@ -44,16 +41,13 @@ export async function fetchChats(): Promise<ChatSession[]> {
 }
 
 export async function createChat(title: string, department: DepartmentId, country: CountryId): Promise<ChatSession> {
-  const res = await safeFetch('/api/chats', {
-    method: 'POST', headers: headers(),
-    body: JSON.stringify({ title, department, country }),
-  });
+  const res = await api('/api/chats', { method: 'POST', body: JSON.stringify({ title, department, country }) });
   const data = await res.json();
   return { id: data.id, title: data.title, preview: '', lastUpdated: data.last_updated || Date.now(), department: data.department };
 }
 
 export async function fetchChatMessages(chatId: string): Promise<Message[]> {
-  const res = await safeFetch(`/api/chats/${chatId}`), { headers: headers() });
+  const res = await api(`/api/chats/${chatId}`);
   if (!res.ok) return [];
   const data = await res.json();
   return (data.messages || []).map((m: any) => ({
@@ -63,33 +57,26 @@ export async function fetchChatMessages(chatId: string): Promise<Message[]> {
 }
 
 export async function saveMessage(chatId: string, role: string, content: string, department?: string, sources?: any[]): Promise<void> {
-  await safeFetch(`/api/chats/${chatId}/messages`), {
-    method: 'POST', headers: headers(),
-    body: JSON.stringify({ role, content, department, sources }),
-  });
+  await api(`/api/chats/${chatId}/messages`, { method: 'POST', body: JSON.stringify({ role, content, department, sources }) });
 }
 
 export async function deleteChat(chatId: string): Promise<void> {
-  await safeFetch(`/api/chats/${chatId}`), { method: 'DELETE', headers: headers() });
+  await api(`/api/chats/${chatId}`, { method: 'DELETE' });
 }
 
 export async function renameChat(chatId: string, title: string): Promise<void> {
-  await safeFetch(`/api/chats/${chatId}`), {
-    method: 'PATCH', headers: headers(), body: JSON.stringify({ title }),
-  });
+  await api(`/api/chats/${chatId}`, { method: 'PATCH', body: JSON.stringify({ title }) });
 }
 
 export async function archiveChat(chatId: string, archived: boolean): Promise<void> {
-  await safeFetch(`/api/chats/${chatId}`), {
-    method: 'PATCH', headers: headers(), body: JSON.stringify({ archived }),
-  });
+  await api(`/api/chats/${chatId}`, { method: 'PATCH', body: JSON.stringify({ archived }) });
 }
 
 // ==================== DOCUMENTS ====================
 
 export async function fetchDocuments(country?: string): Promise<Source[]> {
   const path = country ? `/api/documents?country=${country}` : '/api/documents';
-  const res = await safeFetch(path, { headers: headers() });
+  const res = await api(path);
   if (!res.ok) return [];
   const data = await res.json();
   return data.map((d: any) => ({
@@ -100,7 +87,7 @@ export async function fetchDocuments(country?: string): Promise<Source[]> {
 }
 
 export async function fetchDocumentFull(docId: string): Promise<Source | null> {
-  const res = await safeFetch(`/api/documents/${docId}`), { headers: headers() });
+  const res = await api(`/api/documents/${docId}`);
   if (!res.ok) return null;
   return res.json();
 }
@@ -119,8 +106,8 @@ export async function streamLLMResponse(
   departmentId: DepartmentId, countryId: CountryId,
   history: Message[], callbacks: StreamCallbacks,
 ): Promise<void> {
-  const res = await fetch(url('/api/llm/stream'), {
-    method: 'POST', headers: headers(),
+  const res = await fetch(apiUrl('/api/llm/stream'), {
+    method: 'POST', headers: authHeaders(),
     body: JSON.stringify({
       chatId, message, departmentId, countryId,
       history: history.slice(-10).map(m => ({ role: m.role, content: m.content })),
@@ -136,11 +123,9 @@ export async function streamLLMResponse(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
-
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       const raw = line.slice(6).trim();
