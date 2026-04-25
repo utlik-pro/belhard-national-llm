@@ -86,7 +86,7 @@ export async function* streamFromOpenAI(opts: StreamOptions, model: string = 'gp
     body: JSON.stringify({
       model,
       messages,
-      max_completion_tokens: 8192,
+      max_tokens: 8192,
       temperature: 0.3,
       stream: true,
     }),
@@ -129,7 +129,7 @@ export async function* streamFromOpenAI(opts: StreamOptions, model: string = 'gp
 
 export async function* streamLLM(opts: StreamOptions): AsyncGenerator<string> {
   const models = [
-    { provider: 'openai' as const, name: 'gpt-5-2025-08-07' },
+    { provider: 'openai' as const, name: 'gpt-4o' },
     { provider: 'gemini' as const, name: 'gemini-2.5-flash' },
     { provider: 'openai' as const, name: 'gpt-4o-mini' },
     { provider: 'gemini' as const, name: 'gemini-2.0-flash' },

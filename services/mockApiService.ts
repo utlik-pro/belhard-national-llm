@@ -501,7 +501,7 @@ ${content}`;
     // { provider: 'gemini' as const, name: 'gemini-2.5-flash', useTools: true },
     // { provider: 'gemini' as const, name: 'gemini-2.0-flash-lite-preview-02-05', useTools: false },
     // { provider: 'gemini' as const, name: 'gemini-2.0-flash', useTools: false },
-    { provider: 'openai' as const, name: 'gpt-5-2025-08-07', useTools: false },
+    { provider: 'openai' as const, name: 'gpt-4o', useTools: false },
   ];
 
   let responseStream;
@@ -591,7 +591,8 @@ ${content}`;
                         body: JSON.stringify({
                             model: currentModel.name,
                             messages: openaiMessages,
-                            max_completion_tokens: 8192,
+                            max_tokens: 8192,
+                            temperature: 0.3,
                             stream: true,
                         }),
                     });
